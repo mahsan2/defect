@@ -14,6 +14,7 @@ CSV_PATH     = "param_df_cleaned.csv"  # 1 814 rows
 LABEL_MAP    = {0: "Powder (empty bed)", 1: "Printed region (healthy)"}
 
 # ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner="🔄 Loading model & data …")
 def load_model_and_data():
     # 1) read tabular data and fit scaler (fast)
@@ -22,20 +23,27 @@ def load_model_and_data():
 
     # 2) define model
     class SmallVLM(nn.Module):
-        def __init__(self, n_params):
+        def __init__(self, n_params: int):
             super().__init__()
-            base = models.resnet18(weights="IMAGENET1K_V1")
-            base.fc = nn.Identity()
-            self.cnn = base
+            backbone = models.resnet18(weights="IMAGENET1K_V1")
+            backbone.fc = nn.Identity()
+            self.cnn = backbone
+
             self.mlp = nn.Sequential(
-                nn.Linear(n_params, 64), nn.ReLU(),
-                nn.Linear(64, 32))
-            self.cls = nn.Sequential(
-                nn.Linear(512 + 32, 64), nn.ReLU(),
-                nn.Linear(64, 2))
+                nn.Linear(n_params, 64),
+                nn.ReLU(),
+                nn.Linear(64, 32)
+            )
+
+            self.classifier = nn.Sequential(
+                nn.Linear(512 + 32, 64),
+                nn.ReLU(),
+                nn.Linear(64, 2)
+            )
+
         def forward(self, img, vec):
-            z = torch.cat((self.cnn(img), self.mlp(vec)), dim=1)
-            return self.cls(z)
+            feats = torch.cat((self.cnn(img), self.mlp(vec)), dim=1)
+            return self.classifier(feats)
 
     model = SmallVLM(n_params=scaler.mean_.shape[0])
     state = torch.load(STATE_PATH, map_location="cpu")
@@ -43,6 +51,7 @@ def load_model_and_data():
     model.eval()
 
     return model, scaler, df
+
 
 model, scaler, param_df = load_model_and_data()
 
