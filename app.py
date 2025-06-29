@@ -1,58 +1,49 @@
-# app.py  ────────────────────────────────────────────────────────────
-# Streamlit front-end for the Small-VLM multimodal classifier
-# ────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------
+# Streamlit app  –  Small-VLM defect classification
+# weights-only checkpoint, scaler refitted at startup
+# ------------------------------------------------------------
 import streamlit as st
-import torch, torch.nn as nn, torch.nn.functional as F
-import pandas as pd, numpy as np
+import torch, pandas as pd, numpy as np
+import torch.nn as nn, torch.nn.functional as F
 from torchvision import models, transforms
+from sklearn.preprocessing import StandardScaler
 from PIL import Image
 
-# ⬇️ 1. ----------------------------------------------------------------
-# load model & tabular data  – cached so it happens only once
-# the StandardScaler class is allow-listed *inside* this function
-# so that torch.load can safely un-pickle it on Streamlit Cloud.
-# ---------------------------------------------------------------------
-@st.cache_resource
+STATE_PATH   = "small_vlm_state.pt"    # weights-only (~45 MB)
+CSV_PATH     = "param_df_cleaned.csv"  # 1 814 rows
+LABEL_MAP    = {0: "Powder (empty bed)", 1: "Printed region (healthy)"}
+
+# ─────────────────────────────────────────────────────────────
+@st.cache_resource(show_spinner="🔄 Loading model & data …")
 def load_model_and_data():
-    # allow-list sklearn's StandardScaler for safe unpickling
-    from sklearn.preprocessing import StandardScaler
-    import torch.serialization
-    torch.serialization.add_safe_globals([StandardScaler])
+    # 1) read tabular data and fit scaler (fast)
+    df = pd.read_csv(CSV_PATH).reset_index(drop=True)
+    scaler = StandardScaler().fit(df.values)
 
-    ckpt   = torch.load("small_vlm_defect.pt", map_location="cpu")
-    scaler = ckpt["scaler"]
-    df     = pd.read_csv("param_df_cleaned.csv")
-
-    # ── model definition (must match training) ───────────────────────
+    # 2) define model
     class SmallVLM(nn.Module):
-        def __init__(self, n_params: int):
+        def __init__(self, n_params):
             super().__init__()
             base = models.resnet18(weights="IMAGENET1K_V1")
-            base.fc = nn.Identity()      # 512-D feature vector
+            base.fc = nn.Identity()
             self.cnn = base
             self.mlp = nn.Sequential(
                 nn.Linear(n_params, 64), nn.ReLU(),
-                nn.Linear(64, 32)
-            )
-            self.classifier = nn.Sequential(
+                nn.Linear(64, 32))
+            self.cls = nn.Sequential(
                 nn.Linear(512 + 32, 64), nn.ReLU(),
-                nn.Linear(64, 2)
-            )
-
+                nn.Linear(64, 2))
         def forward(self, img, vec):
-            return self.classifier(
-                torch.cat((self.cnn(img), self.mlp(vec)), dim=1)
-            )
+            z = torch.cat((self.cnn(img), self.mlp(vec)), dim=1)
+            return self.cls(z)
 
     model = SmallVLM(n_params=scaler.mean_.shape[0])
-    model.load_state_dict(ckpt["model_state"])
+    state = torch.load(STATE_PATH, map_location="cpu")
+    model.load_state_dict(state, strict=True)
     model.eval()
+
     return model, scaler, df
 
-
-# ⬇️ 2. ----------------------------------------------------------------
-# initialisation (runs once thanks to cache_resource)
-# ---------------------------------------------------------------------
 model, scaler, param_df = load_model_and_data()
 
 transform = transforms.Compose([
@@ -60,77 +51,61 @@ transform = transforms.Compose([
     transforms.ToTensor()
 ])
 
-label_map = {0: "Powder (empty bed)",
-             1: "Printed region (healthy)"}
+# ─────────────────────────────────────────────────────────────
+st.title("Multimodal Defect Classifier")
 
-# ⬇️ 3. ----------------------------------------------------------------
-# Streamlit user interface
-# ---------------------------------------------------------------------
-st.title("🖼️ Small-VLM • Multimodal Defect Classifier")
+up = st.file_uploader("Upload a slice image (file must start with layer number, e.g. **5_slice_0.png**)", type=["png", "jpg", "jpeg"])
 
-uploaded = st.file_uploader(
-    "Upload an image (filename **must** start with layer number, e.g. `5_slice_0.png`)",
-    type=["png", "jpg", "jpeg"]
-)
+if up:
+    img_pil = Image.open(up).convert("RGB")
+    st.image(img_pil, width=256)
 
-if uploaded:
-    # show uploaded picture
-    img_pil = Image.open(uploaded).convert("RGB")
-    st.image(img_pil, caption="Uploaded image", width=240)
-
-    # extract layer number from filename
-    layer_str = uploaded.name.split("_")[0]
-    if not layer_str.isdigit():
-        st.error("❌  Filename invalid – it should start with a layer number.")
+    # --- parse layer number from filename ---
+    try:
+        layer_idx = int(up.name.split("_")[0])
+    except Exception:
+        st.error("❌ Filename must start with layer number + '_'")
         st.stop()
 
-    layer_idx = int(layer_str)
     if layer_idx >= len(param_df):
-        st.error(f"❌  No tabular row exists for layer {layer_idx}.")
+        st.error(f"No tabular data for layer {layer_idx}")
         st.stop()
 
-    # tabular vector for this layer (scaled)
-    vec_raw = param_df.loc[layer_idx]
-    vec = torch.tensor(
-        scaler.transform(vec_raw.values.reshape(1, -1)),
-        dtype=torch.float32
-    )
-
-    # image tensor
+    # --- prepare inputs ---
     x_img = transform(img_pil).unsqueeze(0)
+    vec   = torch.tensor(scaler.transform(
+              param_df.loc[layer_idx].values.reshape(1, -1)),
+              dtype=torch.float32)
 
-    # model prediction
+    # --- forward ---
     with torch.no_grad():
-        probs = F.softmax(model(x_img, vec), dim=1)
-        conf, pred = torch.max(probs, 1)
+        prob = torch.softmax(model(x_img, vec), dim=1)
+        conf, pred = prob.max(1)
 
-    pred_label = label_map[pred.item()]
-    st.markdown(f"### ✅ Prediction: **{pred_label}** "
-                f"({conf.item()*100:.1f}% confidence)")
+    label = LABEL_MAP[pred.item()]
+    st.markdown(f"### Prediction : **{label}** – {conf.item()*100:.1f}%")
 
-    # contextual parameters
+    # --- show key parameters & rule-based tips ---
+    row = param_df.loc[layer_idx]
     st.write(f"""
-    **Process context**
+    **Process parameters**
 
-    • Top-chamber T = **{vec_raw['top_chamber_temperature']:.0f} °C**  
-    • Bottom flow = **{vec_raw['bottom_flow_rate']:.1f}%**  
-    • Ventilator = **{vec_raw['ventilator_speed']:.0f} rpm**  
-    • O₂ in gas loop = **{vec_raw['gas_loop_oxygen']:.1f} ppm**
+    • Top-chamber T : **{row['top_chamber_temperature']:.0f} °C**  
+    • Bottom flow   : **{row['bottom_flow_rate']:.1f} %**  
+    • Ventilator    : **{row['ventilator_speed']:.0f} rpm**  
+    • O₂            : **{row['gas_loop_oxygen']:.1f} ppm**
     """)
 
-    # simple rule-based suggestions
     tips = []
-    if vec_raw['bottom_flow_rate'] < 45:
-        tips.append("🔧 Increase bottom-flow > **45 %**.")
-    if vec_raw['ventilator_speed'] < 40:
-        tips.append("🔧 Boost ventilator > **40 rpm**.")
-    if vec_raw['gas_loop_oxygen'] > 10:
-        tips.append("🔧 Purge chamber (keep O₂ < **10 ppm**).")
+    if row['bottom_flow_rate'] < 45: tips.append("🔧 Increase bottom-flow > 45 %.")
+    if row['ventilator_speed'] < 40: tips.append("🔧 Boost ventilator > 40 rpm.")
+    if row['gas_loop_oxygen'] > 10:  tips.append("🔧 Purge chamber (O₂ < 10 ppm).")
 
     if tips:
         st.warning(" ".join(tips))
     else:
-        st.success("All key parameters within nominal range ✅")
+        st.success("✅ Parameters within nominal range.")
+
 
     # ⬇️ Grad-CAM (optional) -----------------------------------------
     try:
