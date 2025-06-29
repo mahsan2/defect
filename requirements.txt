@@ -1,11 +1,13 @@
 streamlit
-torch
+torch                 # let Streamlit Cloud pick correct CPU wheel
 torchvision
 pandas
 numpy
 pillow
 scikit-learn
-lime
 matplotlib
 opencv-python
+lime
 git+https://github.com/jacobgil/pytorch-grad-cam.git
+captum
+
