@@ -29,7 +29,7 @@ class SmallVLM(nn.Module):
             nn.Linear(64, 32)
         )
 
-        # 🔴  keep the original name
+        # 🔴 keep the name “classifier” (must match ckpt)
         self.classifier = nn.Sequential(
             nn.Linear(512 + 32, 64), nn.ReLU(),
             nn.Linear(64, 2)
@@ -37,7 +37,8 @@ class SmallVLM(nn.Module):
 
     def forward(self, img, vec):
         feats = torch.cat((self.cnn(img), self.mlp(vec)), dim=1)
-        return self.classifier(feats)
+        return self.classifier(feats)        # <-- NO self.cls
+
 
 
 # ─────────────────────────────────────────────────────────────
