@@ -100,7 +100,11 @@ tips = []
 if row['bottom_flow_rate'] < 45: tips.append("🔧 Increase bottom-flow > 45 %.")
 if row['ventilator_speed'] < 40: tips.append("🔧 Boost ventilator > 40 rpm.")
 if row['gas_loop_oxygen'] > 10:  tips.append("🔧 Purge chamber (O₂ < 10 ppm).")
-st.warning(" ".join(tips)) if tips else st.success("✅ Parameters within range.")
+if tips:
+    st.warning(" ".join(tips))
+else:
+    st.success("✅ Parameters within range.")
+
 
 
 
