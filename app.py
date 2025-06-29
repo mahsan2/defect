@@ -16,7 +16,7 @@ LABEL_MAP  = {0: "Powder (empty bed)", 1: "Printed region (healthy)"}
 class SmallVLM(nn.Module):
     def __init__(self, n_params: int):
         super().__init__()
-        res = models.resnet18(weights="IMAGENET1K_V1")
+        res = models.resnet18(weights=None)
         res.fc = nn.Identity()
         self.cnn = res
         self.mlp = nn.Sequential(
