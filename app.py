@@ -106,28 +106,9 @@ tips = []
 if row['bottom_flow_rate'] < 45: tips.append("🔧 Increase bottom-flow > 45 %.")
 if row['ventilator_speed'] < 40: tips.append("🔧 Boost ventilator > 40 rpm.")
 if row['gas_loop_oxygen'] > 10:  tips.append("🔧 Purge chamber (O₂ < 10 ppm).")
+if tips:
+    st.warning(" ".join(tips))
+else:
+    st.success("✅ Parameters within range.")
 
-st.warning(" ".join(tips)) if tips else st.success("✅ Parameters within range.")
 
-# --- Grad-CAM (optional) --------------------------------------
-with st.expander("🖼 Grad-CAM (image explanation)", expanded=False):
-    try:
-        from pytorch_grad_cam import GradCAM
-        import numpy as np
-        from PIL import Image
-
-        cam = GradCAM(model=model, target_layers=[model.cnn.layer4[-1]])
-        heat = cam(input_tensor=x_img, aug_smooth=True, extra_forward_args=(x_vec,))[0]
-        rgb = np.transpose(x_img.squeeze().numpy(), (1, 2, 0))  # 224x224x3
-        rgb = (rgb - rgb.min()) / (rgb.max() - rgb.min())  # Normalize to [0,1]
-
-        # Blend heatmap with image manually
-        heatmap = np.uint8(255 * heat)  # Scale to [0,255]
-        heatmap = Image.fromarray(heatmap).resize((224, 224)).convert("RGB")
-        heatmap = np.array(heatmap) / 255.0
-        blended = rgb * 0.6 + heatmap * 0.4  # Weighted blend
-        blended = np.uint8(255 * blended)  # Convert to uint8
-
-        st.image(blended, caption="Grad-CAM", width=240)
-    except Exception as e:
-        st.info(f"Grad-CAM not available: {e}")
