@@ -17,11 +17,11 @@ CSV_PATH   = "param_df_cleaned.csv"    # 1 814 rows
 LABEL_MAP  = {0: "Powder (empty bed)", 1: "Printed region (healthy)"}
 
 # ─────────────────────────────────────────────────────────────
-class SmallVLM(nn.Module):             # <- single, global definition
+class SmallVLM(nn.Module):
     def __init__(self, n_params: int):
         super().__init__()
         backbone = models.resnet18(weights="IMAGENET1K_V1")
-        backbone.fc = nn.Identity()            # 512-D feature
+        backbone.fc = nn.Identity()
         self.cnn = backbone
 
         self.mlp = nn.Sequential(
@@ -29,15 +29,16 @@ class SmallVLM(nn.Module):             # <- single, global definition
             nn.Linear(64, 32)
         )
 
-        # 🟥 keep this exact name to match state dict
-        self.classifier = nn.Sequential(
+        # 🔴  keep the original name
+        self.cls = nn.Sequential(
             nn.Linear(512 + 32, 64), nn.ReLU(),
             nn.Linear(64, 2)
         )
 
     def forward(self, img, vec):
         feats = torch.cat((self.cnn(img), self.mlp(vec)), dim=1)
-        return self.classifier(feats)
+        return self.cls(feats)
+
 
 # ─────────────────────────────────────────────────────────────
 #  Disable caching **once** to force a clean import.
