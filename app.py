@@ -110,15 +110,24 @@ if row['gas_loop_oxygen'] > 10:  tips.append("🔧 Purge chamber (O₂ < 10 ppm)
 st.warning(" ".join(tips)) if tips else st.success("✅ Parameters within range.")
 
 # --- Grad-CAM (optional) --------------------------------------
-with st.expander("🖼  Grad-CAM (image explanation)", expanded=False):
+with st.expander("🖼 Grad-CAM (image explanation)", expanded=False):
     try:
         from pytorch_grad_cam import GradCAM
-        from pytorch_grad_cam.utils.image import show_cam_on_image
+        import numpy as np
+        from PIL import Image
 
-        cam    = GradCAM(model, [model.cnn.layer4[-1]], device="cpu")
-        heat   = cam(x_img, extra_forward_args=(x_vec,))[0]
-        rgb    = np.transpose(x_img.squeeze().numpy(), (1, 2, 0))
-        camimg = show_cam_on_image(rgb, heat, use_rgb=True)
-        st.image(camimg, caption="Grad-CAM", width=240)
+        cam = GradCAM(model, [model.cnn.layer4[-1]], device="cpu")
+        heat = cam(x_img, extra_forward_args=(x_vec,))[0]
+        rgb = np.transpose(x_img.squeeze().numpy(), (1, 2, 0))  # 224x224x3
+        rgb = (rgb - rgb.min()) / (rgb.max() - rgb.min())  # Normalize to [0,1]
+
+        # Blend heatmap with image manually
+        heatmap = np.uint8(255 * heat)  # Scale to [0,255]
+        heatmap = Image.fromarray(heatmap).resize((224, 224)).convert("RGB")
+        heatmap = np.array(heatmap) / 255.0
+        blended = rgb * 0.6 + heatmap * 0.4  # Weighted blend
+        blended = np.uint8(255 * blended)  # Convert to uint8
+
+        st.image(blended, caption="Grad-CAM", width=240)
     except Exception as e:
         st.info(f"Grad-CAM not available ({e})")
