@@ -1,9 +1,14 @@
-streamlit
-torch
-torchvision
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+streamlit==1.46.1
+
+# PyTorch pins that actually exist for Python 3.13 on the CPU channel
+torch==2.3.0+cpu
+torchvision==0.18.0+cpu        # companion build
+
 pandas
 numpy
 scikit-learn
 pillow
-pytorch-grad-cam
-opencv-python-headless==4.10.0.84  # Pin to a specific version
+lime
+grad-cam          # brings captum, opencv-python, ttach
