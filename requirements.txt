@@ -1,6 +1,11 @@
-streamlit==1.46.1
-torch>=2.5,<2.8
-torchvision
-scikit-learn
+streamlit
+torch==2.7.1              # plain PyPI build
+torchvision==0.22.1
+pandas
+numpy
 pillow
-lime==0.2.0.1
+matplotlib
+scikit-learn
+captum                    # for Integrated Gradients
+lime                      # tabular LIME
+git+https://github.com/jacobgil/pytorch-grad-cam.git  # Grad-CAM
