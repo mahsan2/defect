@@ -1,6 +1,10 @@
-streamlit
-torch==2.7.1       # or any 2.x CPU build available on Streamlit Cloud
-torchvision==0.22.1
+streamlit==1.46.1
+
+# PyTorch CPU wheels come from the official extra index:
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.7.1+cpu
+torchvision==0.22.1+cpu
+
 pandas
 numpy
 scikit-learn
