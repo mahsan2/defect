@@ -1,9 +1,5 @@
-streamlit
-torch==2.7.1+cpu   --extra-index-url https://download.pytorch.org/whl/cpu
-torchvision==0.22.1+cpu
-pandas
-numpy
+streamlit==1.46.1
+torch>=2.5,<2.8
+torchvision
 scikit-learn
 pillow
-
-
