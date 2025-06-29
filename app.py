@@ -15,29 +15,42 @@ LABEL_MAP    = {0: "Powder (empty bed)", 1: "Printed region (healthy)"}
 
 # ─────────────────────────────────────────────────────────────
 # ─────────────────────────────────────────────────────────────
-@st.cache_resource(show_spinner="🔄 Loading model & data …")
+# ------------------------------------------------------------
+# Model + data loader   (place near the top of app.py)
+# ------------------------------------------------------------
+import streamlit as st
+import torch
+import torch.nn as nn
+from torchvision import models
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+
+STATE_PATH = "small_vlm_state.pt"      # weights-only file
+CSV_PATH   = "param_df_cleaned.csv"    # tabular data
+
+# ─────────────────────────────────────────────────────────────
+@st.cache_resource(show_spinner="🔄 Loading model & data…")
 def load_model_and_data():
-    # 1) read tabular data and fit scaler (fast)
+    # 1) tabular data + scaler
     df = pd.read_csv(CSV_PATH).reset_index(drop=True)
     scaler = StandardScaler().fit(df.values)
 
-    # 2) define model
+    # 2) model **with attribute name `classifier`**
     class SmallVLM(nn.Module):
         def __init__(self, n_params: int):
             super().__init__()
             backbone = models.resnet18(weights="IMAGENET1K_V1")
-            backbone.fc = nn.Identity()
+            backbone.fc = nn.Identity()            # 512-D
             self.cnn = backbone
 
             self.mlp = nn.Sequential(
-                nn.Linear(n_params, 64),
-                nn.ReLU(),
+                nn.Linear(n_params, 64), nn.ReLU(),
                 nn.Linear(64, 32)
             )
 
+            # ↙️ keep this exact name to match the checkpoint
             self.classifier = nn.Sequential(
-                nn.Linear(512 + 32, 64),
-                nn.ReLU(),
+                nn.Linear(512 + 32, 64), nn.ReLU(),
                 nn.Linear(64, 2)
             )
 
@@ -46,11 +59,14 @@ def load_model_and_data():
             return self.classifier(feats)
 
     model = SmallVLM(n_params=scaler.mean_.shape[0])
+
+    # 3) load weights (strict = True is fine now)
     state = torch.load(STATE_PATH, map_location="cpu")
     model.load_state_dict(state, strict=True)
     model.eval()
 
     return model, scaler, df
+
 
 
 model, scaler, param_df = load_model_and_data()
