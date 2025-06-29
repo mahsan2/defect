@@ -1,14 +1,9 @@
 streamlit
-
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.7.1+cpu
+torch==2.7.1+cpu   --extra-index-url https://download.pytorch.org/whl/cpu
 torchvision==0.22.1+cpu
-
 pandas
 numpy
-pillow
-matplotlib
 scikit-learn
-captum
-git+https://github.com/jacobgil/pytorch-grad-cam.git@781dbc0d16ffa95b6d18b96b7b829840a82d93d1
+pillow
+
 
