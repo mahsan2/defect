@@ -116,8 +116,8 @@ with st.expander("🖼 Grad-CAM (image explanation)", expanded=False):
         import numpy as np
         from PIL import Image
 
-        cam = GradCAM(model, [model.cnn.layer4[-1]], device="cpu")
-        heat = cam(x_img, extra_forward_args=(x_vec,))[0]
+        cam = GradCAM(model=model, target_layers=[model.cnn.layer4[-1]])
+        heat = cam(input_tensor=x_img, aug_smooth=True, extra_forward_args=(x_vec,))[0]
         rgb = np.transpose(x_img.squeeze().numpy(), (1, 2, 0))  # 224x224x3
         rgb = (rgb - rgb.min()) / (rgb.max() - rgb.min())  # Normalize to [0,1]
 
@@ -130,4 +130,4 @@ with st.expander("🖼 Grad-CAM (image explanation)", expanded=False):
 
         st.image(blended, caption="Grad-CAM", width=240)
     except Exception as e:
-        st.info(f"Grad-CAM not available ({e})")
+        st.info(f"Grad-CAM not available: {e}")
