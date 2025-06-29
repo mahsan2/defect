@@ -12,7 +12,7 @@ from PIL import Image
 import numpy as np
 import os
 
-STATE_PATH = "small_vlm_state.pt"      # 45 MB weights-only file
+STATE_PATH = "small_vlm_state_fixed.pt"      # 45 MB weights-only file
 CSV_PATH   = "param_df_cleaned.csv"    # 1 814 rows
 LABEL_MAP  = {0: "Powder (empty bed)", 1: "Printed region (healthy)"}
 
