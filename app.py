@@ -130,3 +130,27 @@ if up:
         st.image(cam_img, caption="Grad-CAM", width=240)
     except Exception as e:
         st.info(f"Grad-CAM unavailable ({e})")
+        # --- LIME ---------------------------------------------------
+    with st.expander("🔍 Show LIME tabular explanation"):
+        from lime import lime_tabular
+
+        explainer = lime_tabular.LimeTabularExplainer(
+            training_data       = param_df.values,
+            feature_names       = list(param_df.columns),
+            mode                = "classification",
+            discretize_continuous=True,
+            class_names         = list(LABEL_MAP.values())
+        )
+
+        exp = explainer.explain_instance(
+            data_row   = param_df.loc[layer_idx].values,
+            predict_fn = lambda X: torch.softmax(
+                model(
+                    torch.zeros((X.shape[0], 3, 224, 224)),          # dummy images
+                    torch.tensor(scaler.transform(X), dtype=torch.float32)
+                ), 1
+            ).detach().numpy(),
+            num_features = 10
+        )
+
+        st.components.v1.html(exp.as_html(), height=400)
