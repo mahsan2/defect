@@ -1,109 +1,103 @@
-# ------------------------------------------------------------
-#  Small-VLM Streamlit app  –  minimal version (no LIME / CAM)
-# ------------------------------------------------------------
-import streamlit as st
-import torch
-import torch.nn as nn, torch.nn.functional as F
+import streamlit as st, torch, torch.nn as nn, torch.nn.functional as F
 from torchvision import models, transforms
 from sklearn.preprocessing import StandardScaler
-import pandas as pd
+import pandas as pd, numpy as np
 from PIL import Image
-import numpy as np
 
-STATE_PATH = "small_vlm_state_fixed.pt"   # your weights-only file
+STATE_PATH = "small_vlm_state_fixed.pt"
 CSV_PATH   = "param_df_cleaned.csv"
 LABEL_MAP  = {0: "Powder (empty bed)", 1: "Printed region (healthy)"}
 
-# ─────────────────────────────────────────────────────────────
+# ─────────────────── model ───────────────────
 class SmallVLM(nn.Module):
-    def __init__(self, n_params: int):
+    def __init__(self, n_params:int):
         super().__init__()
-        res = models.resnet18(weights="IMAGENET1K_V1")
-        res.fc = nn.Identity()                # 512-D global image feature
-        self.cnn = res
-
-        self.mlp = nn.Sequential(
-            nn.Linear(n_params, 64), nn.ReLU(),
-            nn.Linear(64, 32)
-        )
-
-        #  name MUST be “classifier” -> matches checkpoint keys
-        self.classifier = nn.Sequential(
-            nn.Linear(512 + 32, 64), nn.ReLU(),
-            nn.Linear(64, 2)
-        )
-
+        res           = models.resnet18(weights="IMAGENET1K_V1")
+        res.fc        = nn.Identity()
+        self.cnn      = res
+        self.mlp      = nn.Sequential(nn.Linear(n_params,64), nn.ReLU(),
+                                      nn.Linear(64,32))
+        self.classifier = nn.Sequential(nn.Linear(512+32,64), nn.ReLU(),
+                                        nn.Linear(64,2))
     def forward(self, img, vec):
-        feats = torch.cat((self.cnn(img), self.mlp(vec)), dim=1)
-        return self.classifier(feats)
+        return self.classifier(
+            torch.cat((self.cnn(img), self.mlp(vec)), 1)
+        )
 
-@st.cache_resource(show_spinner="🔄 Loading model & data …")
+@st.cache_resource
 def load_all():
-    df      = pd.read_csv(CSV_PATH).reset_index(drop=True)
+    df      = pd.read_csv(CSV_PATH)
     scaler  = StandardScaler().fit(df.values)
     model   = SmallVLM(df.shape[1])
-    model.load_state_dict(torch.load(STATE_PATH, map_location="cpu"),
-                          strict=True)
+    model.load_state_dict(torch.load(STATE_PATH, map_location="cpu"))
     model.eval()
     return model, scaler, df
 
 model, scaler, param_df = load_all()
 tfm = transforms.Compose([transforms.Resize((224,224)), transforms.ToTensor()])
 
-# ─────────────────────────────────────────────────────────────
-st.title("Multimodal Defect Classifier (Small-VLM)")
+# ─────────────────── UI ───────────────────
+st.title("Multimodal Defect Classifier")
 
-file = st.file_uploader(
-    "Upload slice image (filename must start with layer number, e.g. **5_slice_0.png**)",
-    type=["png", "jpg", "jpeg"]
-)
-if not file:
-    st.stop()
+up = st.file_uploader("Upload slice image (e.g. 5_slice_0.png)",
+                      type=["png","jpg","jpeg"])
+if not up: st.stop()
 
-# ------------------------------------------------------------
-img = Image.open(file).convert("RGB")
+img = Image.open(up).convert("RGB")
 st.image(img, width=256)
 
 try:
-    layer = int(file.name.split("_")[0])
-except Exception:
-    st.error("Filename must start with layer number followed by '_'")
+    layer_idx = int(up.name.split("_")[0])
+except ValueError:
+    st.error("Filename must start with layer number")
+    st.stop()
+if layer_idx >= len(param_df):
+    st.error(f"No data for layer {layer_idx}")
     st.stop()
 
-if layer >= len(param_df):
-    st.error(f"No tabular data for layer {layer}")
-    st.stop()
-
+# prediction
 x_img = tfm(img).unsqueeze(0)
-x_vec = torch.tensor(
-    scaler.transform(param_df.loc[layer].to_numpy()[None]),
-    dtype=torch.float32
-)
-
+x_vec = torch.tensor(scaler.transform(param_df.loc[layer_idx][None]),
+                     dtype=torch.float32)
 with torch.no_grad():
-    p = F.softmax(model(x_img, x_vec), 1)
-    conf, pred = p.max(1)
-
+    prob = torch.softmax(model(x_img, x_vec), 1)
+conf, pred = prob.max(1)
 st.markdown(f"### **{LABEL_MAP[pred.item()]}** — {conf.item()*100:.1f}%")
 
-row = param_df.loc[layer]
-st.write(f"""
-**Process parameters**
-
-• Top-chamber T = {row['top_chamber_temperature']:.0f} °C  
-• Bottom flow   = {row['bottom_flow_rate']:.1f} %  
-• Ventilator    = {row['ventilator_speed']:.0f} rpm  
-• O₂            = {row['gas_loop_oxygen']:.1f} ppm
-""")
-
+# parameters + simple rule tips
+row = param_df.loc[layer_idx]
 tips = []
 if row['bottom_flow_rate'] < 45: tips.append("🔧 Increase bottom-flow > 45 %.")
 if row['ventilator_speed'] < 40: tips.append("🔧 Boost ventilator > 40 rpm.")
 if row['gas_loop_oxygen'] > 10:  tips.append("🔧 Purge chamber (O₂ < 10 ppm).")
+
 if tips:
     st.warning(" ".join(tips))
 else:
     st.success("✅ Parameters within range.")
+
+# LIME expander (add this block if you want LIME now)
+with st.expander("🔍 Show LIME tabular explanation"):
+    from lime import lime_tabular
+    @st.cache_resource(ttl=3600, show_spinner=False)
+    def _explainer():
+        return lime_tabular.LimeTabularExplainer(
+            param_df.values,
+            feature_names=list(param_df.columns),
+            class_names=list(LABEL_MAP.values()),
+            mode="classification",
+            discretize_continuous=True,
+        )
+    exp = _explainer().explain_instance(
+        data_row=row.values,
+        predict_fn=lambda X: torch.softmax(
+            model(torch.zeros((X.shape[0],3,224,224)),
+                  torch.tensor(scaler.transform(X),dtype=torch.float32)),1
+        ).numpy(),
+        num_features=8, num_samples=1000
+    )
+    st.components.v1.html(exp.as_html(), height=420, scrolling=True)
+
 
 
 
