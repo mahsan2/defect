@@ -111,4 +111,37 @@ if tips:
 else:
     st.success("✅ Parameters within range.")
 
+#---------------------------------------------------------
+# ─────────── 1. extra import ───────────
+from lime import lime_tabular      #  ← NEW
+# ─────────── 2. cache a single LimeTabularExplainer ───────────
+@st.cache_resource(ttl=3600, show_spinner=False)
+def _lime_explainer():
+    return lime_tabular.LimeTabularExplainer(
+        training_data         = param_df.values,          # raw, unscaled
+        feature_names         = list(param_df.columns),
+        class_names           = list(LABEL_MAP.values()),
+        mode                  = "classification",
+        discretize_continuous = True,                     # makes plots nicer
+    )
+# ─────────── 3. show explanation in an expander ───────────
+with st.expander("🔍  Show LIME tabular explanation"):
+    # --- prediction fn that LIME will call many times -------------
+    def _lime_predict(X: np.ndarray) -> np.ndarray:         # X shape  (n,20)
+        X_scaled = scaler.transform(X).astype("float32")
+        dummy_img = torch.zeros((X.shape[0], 3, 224, 224))  # keep image branch neutral
+        with torch.no_grad():
+            logits = model(dummy_img, torch.tensor(X_scaled))
+            return torch.softmax(logits, 1).cpu().numpy()   # (n,2)
+
+    # --- run LIME on the *current* layer --------------------------
+    exp = _lime_explainer().explain_instance(
+        data_row     = row.values,      # raw, unscaled (shape 20,)
+        predict_fn   = _lime_predict,
+        num_features = 8,               # top-k bars to show
+        num_samples  = 1000             # perturbations LIME will generate
+    )
+
+    # --- render nicely inside Streamlit ---------------------------
+    st.components.v1.html(exp.as_html(), height=440, scrolling=True)
 
