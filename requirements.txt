@@ -6,4 +6,4 @@ pandas
 numpy
 scikit-learn
 pillow
-lime
+lime==0.2.0.1 
