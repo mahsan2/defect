@@ -1,6 +1,10 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 streamlit==1.46.1
-torch==2.7.1          # remove “+cpu”
-torchvision==0.22.1
-pandas==2.3.0
+torch==2.2.2+cpu
+torchvision==0.17.2+cpu
 scikit-learn==1.7.0
+pandas==2.3.0
+pillow
 lime==0.2.0.1
+matplotlib
+# anything else you actually use…
