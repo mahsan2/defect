@@ -1,11 +1,11 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 
 streamlit==1.46.1
-torch==2.3.0+cpu
-torchvision==0.18.0+cpu
+torch==2.3.0+cpu          # the latest CPU wheel for py 3.13
+torchvision==0.18.0+cpu   # companion build
 pandas
 numpy
 scikit-learn
 pillow
 lime
-
+grad-cam                  # pulls opencv-python, captum, ttach
