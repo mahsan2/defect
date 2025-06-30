@@ -1,9 +1,6 @@
---extra-index-url https://download.pytorch.org/whl/cpu
 streamlit==1.46.1
-torch==2.7.1
+torch==2.7.1          # remove “+cpu”
 torchvision==0.22.1
 pandas==2.3.0
-numpy
 scikit-learn==1.7.0
-pillow
-lime==0.2.0.1 
+lime==0.2.0.1
